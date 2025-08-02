@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node dist/server.js",
     "dev": "ts-node --watch server.ts",
-    "build": "tsc",
+    "build": "tsc --project tsconfig.json",
     "build:start": "npm run build && npm start",
     "test": "node test/full-cross-chain-test.js",
     "test:defi": "node test/defi-api-test.js",
