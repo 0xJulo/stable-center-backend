@@ -1,0 +1,31 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.ts",
+  "scripts": {
+    "start": "ts-node server.ts",
+    "dev": "ts-node --watch server.ts",
+    "build": "tsc",
+    "test": "node test/full-cross-chain-test.js",
+    "test:defi": "node test/defi-api-test.js",
+    "setup": "node setup-env.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@1inch/cross-chain-sdk": "^0.1.15",
+    "axios": "^1.6.0",
+    "dotenv": "^17.2.1",
+    "express": "^4.18.2",
+    "ethers": "^6.11.1",
+    "web3": "^4.16.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^24.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
