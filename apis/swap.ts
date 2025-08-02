@@ -8,7 +8,7 @@ import {
 const router = express.Router();
 
 // Generic cross-chain swap endpoint with simulation support
-router.post("/cross-chain", async (req, res) => {
+router.post("/cross-chain", async (req: express.Request, res: express.Response) => {
   const {
     amount,
     srcToken,
@@ -54,7 +54,7 @@ router.post("/cross-chain", async (req, res) => {
 });
 
 // Complete cross-chain swap with monitoring endpoint
-router.post("/cross-chain/complete", async (req, res) => {
+router.post("/cross-chain/complete", async (req: express.Request, res: express.Response) => {
   const {
     amount,
     srcToken,
@@ -127,7 +127,7 @@ router.post("/cross-chain/complete", async (req, res) => {
 });
 
 // Get quote for cross-chain swap
-router.get("/quote", async (req, res) => {
+router.get("/quote", async (req: express.Request, res: express.Response) => {
   const { amount, srcToken, dstToken, srcChainId, dstChainId } = req.query;
 
   console.log("🔍 Quote request received:");
@@ -190,7 +190,7 @@ router.get("/quote", async (req, res) => {
 });
 
 // Get order status
-router.get("/order-status/:orderHash", async (req, res) => {
+router.get("/order-status/:orderHash", async (req: express.Request, res: express.Response) => {
   const { orderHash } = req.params;
 
   console.log("📊 Order status request received:");

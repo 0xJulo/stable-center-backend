@@ -9,7 +9,7 @@ import {
 const router = express.Router();
 
 // Get portfolio tokens snapshot
-router.get("/portfolio/tokens", async (req, res) => {
+router.get("/portfolio/tokens", async (req: express.Request, res: express.Response) => {
   const { addresses, chain_id } = req.query;
 
   console.log("📊 Portfolio tokens request received:");
@@ -52,7 +52,7 @@ router.get("/portfolio/tokens", async (req, res) => {
 });
 
 // Get portfolio chart data
-router.get("/portfolio/chart", async (req, res) => {
+router.get("/portfolio/chart", async (req: express.Request, res: express.Response) => {
   const {
     addresses,
     chain_id,
@@ -110,7 +110,7 @@ router.get("/portfolio/chart", async (req, res) => {
 });
 
 // Get supported chains
-router.get("/chains", async (req, res) => {
+router.get("/chains", async (req: express.Request, res: express.Response) => {
   console.log("🔗 Supported chains request received");
 
   res.status(200).json({
@@ -127,7 +127,7 @@ router.get("/chains", async (req, res) => {
 });
 
 // Health check for DeFi API
-router.get("/health", async (req, res) => {
+router.get("/health", async (req: express.Request, res: express.Response) => {
   res.json({
     status: "OK",
     timestamp: new Date().toISOString(),
