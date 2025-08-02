@@ -1,17 +1,26 @@
 {
-  "name": "backend",
+  "name": "stable-center-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "server.ts",
+  "description": "Cross-chain swap API backend with 1inch Fusion integration",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "ts-node server.ts",
+    "start": "node dist/server.js",
     "dev": "ts-node --watch server.ts",
     "build": "tsc",
+    "build:start": "npm run build && npm start",
     "test": "node test/full-cross-chain-test.js",
     "test:defi": "node test/defi-api-test.js",
-    "setup": "node setup-env.js"
+    "setup": "node setup-env.js",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist"
   },
-  "keywords": [],
+  "keywords": [
+    "defi",
+    "cross-chain",
+    "swap",
+    "1inch",
+    "fusion"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -27,5 +36,8 @@
     "@types/node": "^24.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
