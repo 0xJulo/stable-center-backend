@@ -1,7 +1,7 @@
 import axios from "axios";
 import dotenv from "dotenv";
 
-dotenv.config({ path: "../../.env" });
+dotenv.config({ path: "../.env" });
 
 // 1inch DeFi API configuration
 const DEFI_API_BASE = "https://api.1inch.dev";

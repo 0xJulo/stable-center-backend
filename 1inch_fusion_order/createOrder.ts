@@ -39,7 +39,7 @@ const ERC20_ABI = [
   },
 ];
 
-dotenv.config({ path: "../../.env" });
+dotenv.config({ path: "../.env" });
 
 // Validate environment variables
 const privateKey = process.env.PRIVATE_KEY;
