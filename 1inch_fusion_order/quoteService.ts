@@ -134,7 +134,7 @@ export async function getQuoteOnly(request: QuoteRequest): Promise<QuoteResponse
   });
 
   try {
-    // Make direct API call to 1inch Fusion for quote
+    // Make direct API call to 1inch Fusion+ using correct endpoint structure
     const quotePayload = {
       amount,
       srcChainId,
@@ -145,27 +145,44 @@ export async function getQuoteOnly(request: QuoteRequest): Promise<QuoteResponse
       walletAddress,
     };
 
+    console.log("📤 Making 1inch Fusion+ quote request:");
+    console.log(JSON.stringify(quotePayload, null, 2));
+
+    // Try the correct 1inch Fusion+ endpoint structure
     const response = await fetch(
       "https://api.1inch.dev/fusion-plus/quoter/v1.0/quote",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${authKey}`,
+          "Authorization": `Bearer ${authKey}`,
           "Content-Type": "application/json",
-          Accept: "application/json",
+          "Accept": "application/json",
         },
         body: JSON.stringify(quotePayload),
       }
     );
 
+    console.log("🌐 1inch API Response Status:", response.status);
+
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`1inch API error (${response.status}): ${errorText}`);
+      console.error("❌ 1inch API Error Response:", errorText);
+      
+      // Try to parse error as JSON for better error messages
+      try {
+        const errorJson = JSON.parse(errorText);
+        throw new Error(`1inch API error (${response.status}): ${errorJson.message || errorJson.error || errorText}`);
+      } catch {
+        throw new Error(`1inch API error (${response.status}): ${errorText}`);
+      }
     }
 
-    const quoteData = await response.json();
+    const responseText = await response.text();
+    console.log("🌐 1inch API Raw Response:", responseText.substring(0, 500) + "...");
 
+    const quoteData = JSON.parse(responseText);
     console.log("✅ Quote received successfully");
+    console.log("📊 Quote keys:", Object.keys(quoteData));
 
     return {
       srcChainId,
@@ -181,6 +198,7 @@ export async function getQuoteOnly(request: QuoteRequest): Promise<QuoteResponse
     };
   } catch (error) {
     console.error("❌ Error getting quote:", error);
+    console.error("❌ Error stack:", (error as Error).stack);
     throw new Error(`Failed to get quote: ${(error as Error).message}`);
   }
 }
