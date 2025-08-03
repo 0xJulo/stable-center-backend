@@ -15,10 +15,5 @@
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "functions": {
-    "server.ts": {
-      "maxDuration": 30
-    }
   }
 }
