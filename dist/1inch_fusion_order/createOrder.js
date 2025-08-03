@@ -7,11 +7,13 @@ exports.getQuote = getQuote;
 exports.createFusionOrder = createFusionOrder;
 exports.getOrderStatus = getOrderStatus;
 exports.monitorOrderStatus = monitorOrderStatus;
+exports.submitPreparedOrder = submitPreparedOrder;
 exports.createCompleteFusionOrder = createCompleteFusionOrder;
 const cross_chain_sdk_1 = require("@1inch/cross-chain-sdk");
 const web3_1 = __importDefault(require("web3"));
 const node_crypto_1 = require("node:crypto");
 const dotenv_1 = __importDefault(require("dotenv"));
+const auth_utils_1 = require("../lib/auth-utils");
 // ERC-20 ABI for approve function
 const ERC20_ABI = [
     {
@@ -283,15 +285,23 @@ async function getQuote({ amount, srcChainId, dstChainId, srcTokenAddress, dstTo
         throw new Error(`Failed to get quote: ${error.message}`);
     }
 }
-async function createFusionOrder({ amount, srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, userWalletAddress = "0x0000000000000000000000000000000000000000", // Default for quotes
+async function createFusionOrder({ amount, srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, userWalletAddress, useUserWallet = false, // Flag to indicate non-custodial mode
  }) {
     try {
-        // Validate chain IDs
-        if (!srcChainId || !dstChainId) {
-            throw new Error("Source and destination chain IDs are required");
+        // Validate user wallet address
+        if (!userWalletAddress || !(0, auth_utils_1.isValidEthereumAddress)(userWalletAddress)) {
+            throw new Error("Valid user wallet address is required");
         }
-        if (srcChainId === dstChainId) {
-            throw new Error("Source and destination chain IDs must be different for cross-chain swaps");
+        // Validate order parameters using auth utilities
+        const paramValidation = (0, auth_utils_1.validateOrderParams)({
+            amount,
+            srcChainId,
+            dstChainId,
+            srcTokenAddress,
+            dstTokenAddress,
+        });
+        if (!paramValidation.isValid) {
+            throw new Error(`Invalid order parameters: ${paramValidation.errors.join(", ")}`);
         }
         // Use default tokens if not provided, based on the source chain
         let finalSrcToken = srcTokenAddress;
@@ -327,6 +337,10 @@ async function createFusionOrder({ amount, srcChainId, dstChainId, srcTokenAddre
         console.log(`Destination token: ${finalDstToken}`);
         console.log(`Amount: ${amount}`);
         console.log(`User wallet: ${userWalletAddress}`);
+        console.log(`Mode: ${useUserWallet ? 'Non-custodial (User wallet)' : 'Custodial (Backend wallet)'}`);
+        // Determine which wallet address to use for the quote and order
+        const orderWalletAddress = useUserWallet ? userWalletAddress : walletAddress;
+        console.log(`Using wallet for order: ${orderWalletAddress}`);
         // Get quote
         const quotePayload = {
             amount,
@@ -335,7 +349,7 @@ async function createFusionOrder({ amount, srcChainId, dstChainId, srcTokenAddre
             enableEstimate: true,
             srcTokenAddress: finalSrcToken,
             dstTokenAddress: finalDstToken,
-            walletAddress,
+            walletAddress: orderWalletAddress,
         };
         console.log("📤 Creating fusion order - Quote payload:");
         console.log(JSON.stringify(quotePayload, null, 2));
@@ -349,9 +363,9 @@ async function createFusionOrder({ amount, srcChainId, dstChainId, srcTokenAddre
             ? cross_chain_sdk_1.HashLock.forSingleFill(secrets[0])
             : cross_chain_sdk_1.HashLock.forMultipleFills(cross_chain_sdk_1.HashLock.getMerkleLeaves(secrets));
         const secretHashes = secrets.map((s) => cross_chain_sdk_1.HashLock.hashSecret(s));
-        // Create order
+        // Create order using the appropriate wallet
         const { hash, quoteId, order } = await sdk.createOrder(quote, {
-            walletAddress,
+            walletAddress: orderWalletAddress,
             hashLock,
             preset,
             source,
@@ -360,16 +374,28 @@ async function createFusionOrder({ amount, srcChainId, dstChainId, srcTokenAddre
         console.log("✅ Order created successfully");
         console.log("📋 Order hash:", hash);
         console.log("📋 Quote ID:", quoteId);
-        // Submit order
-        console.log("🔄 Calling sdk.submitOrder()...");
-        const _orderInfo = await sdk.submitOrder(quote.srcChainId, order, quoteId, secretHashes);
-        console.log("✅ Order submitted successfully");
+        // For non-custodial mode, we don't submit the order here
+        // The frontend will handle the submission after user approval
+        if (!useUserWallet) {
+            // Submit order (custodial mode only)
+            console.log("🔄 Calling sdk.submitOrder() - Custodial Mode...");
+            const _orderInfo = await sdk.submitOrder(quote.srcChainId, order, quoteId, secretHashes);
+            console.log("✅ Order submitted successfully - Custodial Mode");
+        }
+        else {
+            console.log("⏳ Order prepared for user submission - Non-custodial Mode");
+        }
         return {
             hash,
             secrets,
             secretHashes,
             quote,
-            status: "submitted",
+            order: useUserWallet ? order : undefined, // Only return order data in non-custodial mode
+            quoteId,
+            status: useUserWallet ? "prepared" : "submitted",
+            userWalletAddress,
+            orderWalletAddress,
+            mode: useUserWallet ? "non-custodial" : "custodial",
             // Return approval info for frontend
             approvalInfo: {
                 tokenAddress: finalSrcToken,
@@ -437,7 +463,29 @@ async function monitorOrderStatus(hash, secrets) {
         throw new Error(`Failed to monitor order status: ${error.message}`);
     }
 }
-async function createCompleteFusionOrder({ amount, srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, }) {
+/**
+ * Submit a prepared order to the 1inch network
+ * Used in non-custodial mode after user has approved the transaction
+ */
+async function submitPreparedOrder({ order, quoteId, srcChainId, secretHashes, }) {
+    try {
+        console.log("🔄 Submitting prepared order to 1inch network...");
+        console.log("Order ID:", quoteId);
+        console.log("Source Chain:", srcChainId);
+        // Submit the order to 1inch Fusion network
+        const _orderInfo = await sdk.submitOrder(srcChainId, order, quoteId, secretHashes);
+        console.log("✅ Prepared order submitted successfully");
+        return {
+            success: true,
+            status: "submitted",
+        };
+    }
+    catch (error) {
+        console.error("❌ Error submitting prepared order:", error);
+        throw new Error(`Failed to submit prepared order: ${error.message}`);
+    }
+}
+async function createCompleteFusionOrder({ amount, srcChainId, dstChainId, srcTokenAddress, dstTokenAddress, userWalletAddress, useUserWallet = false, }) {
     try {
         // Create the order
         const orderResult = await createFusionOrder({
@@ -446,13 +494,22 @@ async function createCompleteFusionOrder({ amount, srcChainId, dstChainId, srcTo
             dstChainId,
             srcTokenAddress,
             dstTokenAddress,
+            userWalletAddress,
+            useUserWallet,
         });
-        // Monitor the order status until completion
-        const finalStatus = await monitorOrderStatus(orderResult.hash, orderResult.secrets);
-        return {
-            ...orderResult,
-            finalStatus,
-        };
+        // Only monitor if order was immediately submitted (custodial mode)
+        if (!useUserWallet) {
+            // Monitor the order status until completion
+            const finalStatus = await monitorOrderStatus(orderResult.hash, orderResult.secrets);
+            return {
+                ...orderResult,
+                finalStatus,
+            };
+        }
+        else {
+            // In non-custodial mode, return the prepared order for frontend handling
+            return orderResult;
+        }
     }
     catch (error) {
         console.error("Error in complete fusion order:", error);

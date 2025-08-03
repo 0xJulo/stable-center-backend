@@ -6,4 +6,9 @@ startCommand = "npm start"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 10 
+restartPolicyMaxRetries = 10
+
+# Secure 1inch Fusion Backend - READ-ONLY
+# No private keys required - 1inch compliant
+[environment]
+NODE_ENV = "production" 

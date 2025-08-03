@@ -10,6 +10,10 @@ import Web3 from "web3";
 import { ethers } from "ethers";
 import { randomBytes } from "node:crypto";
 import dotenv from "dotenv";
+import {
+  isValidEthereumAddress,
+  validateOrderParams,
+} from "../lib/auth-utils";
 
 // ERC-20 ABI for approve function
 const ERC20_ABI = [
@@ -366,25 +370,34 @@ export async function createFusionOrder({
   dstChainId,
   srcTokenAddress,
   dstTokenAddress,
-  userWalletAddress = "0x0000000000000000000000000000000000000000", // Default for quotes
+  userWalletAddress,
+  useUserWallet = false, // Flag to indicate non-custodial mode
 }: {
   amount: string;
   srcChainId: number;
   dstChainId: number;
   srcTokenAddress?: string;
   dstTokenAddress?: string;
-  userWalletAddress?: string;
+  userWalletAddress: string;
+  useUserWallet?: boolean;
 }) {
   try {
-    // Validate chain IDs
-    if (!srcChainId || !dstChainId) {
-      throw new Error("Source and destination chain IDs are required");
+    // Validate user wallet address
+    if (!userWalletAddress || !isValidEthereumAddress(userWalletAddress)) {
+      throw new Error("Valid user wallet address is required");
     }
 
-    if (srcChainId === dstChainId) {
-      throw new Error(
-        "Source and destination chain IDs must be different for cross-chain swaps"
-      );
+    // Validate order parameters using auth utilities
+    const paramValidation = validateOrderParams({
+      amount,
+      srcChainId,
+      dstChainId,
+      srcTokenAddress,
+      dstTokenAddress,
+    });
+
+    if (!paramValidation.isValid) {
+      throw new Error(`Invalid order parameters: ${paramValidation.errors.join(", ")}`);
     }
 
     // Use default tokens if not provided, based on the source chain
@@ -433,6 +446,12 @@ export async function createFusionOrder({
     console.log(`Destination token: ${finalDstToken}`);
     console.log(`Amount: ${amount}`);
     console.log(`User wallet: ${userWalletAddress}`);
+    console.log(`Mode: ${useUserWallet ? 'Non-custodial (User wallet)' : 'Custodial (Backend wallet)'}`);
+
+    // Determine which wallet address to use for the quote and order
+    const orderWalletAddress = useUserWallet ? userWalletAddress : walletAddress;
+    
+    console.log(`Using wallet for order: ${orderWalletAddress}`);
 
     // Get quote
     const quotePayload = {
@@ -442,7 +461,7 @@ export async function createFusionOrder({
       enableEstimate: true,
       srcTokenAddress: finalSrcToken,
       dstTokenAddress: finalDstToken,
-      walletAddress,
+      walletAddress: orderWalletAddress,
     };
 
     console.log("📤 Creating fusion order - Quote payload:");
@@ -464,9 +483,9 @@ export async function createFusionOrder({
 
     const secretHashes = secrets.map((s) => HashLock.hashSecret(s));
 
-    // Create order
+    // Create order using the appropriate wallet
     const { hash, quoteId, order } = await sdk.createOrder(quote, {
-      walletAddress,
+      walletAddress: orderWalletAddress,
       hashLock,
       preset,
       source,
@@ -477,22 +496,33 @@ export async function createFusionOrder({
     console.log("📋 Order hash:", hash);
     console.log("📋 Quote ID:", quoteId);
 
-    // Submit order
-    console.log("🔄 Calling sdk.submitOrder()...");
-    const _orderInfo = await sdk.submitOrder(
-      quote.srcChainId,
-      order as any,
-      quoteId,
-      secretHashes
-    );
-    console.log("✅ Order submitted successfully");
+    // For non-custodial mode, we don't submit the order here
+    // The frontend will handle the submission after user approval
+    if (!useUserWallet) {
+      // Submit order (custodial mode only)
+      console.log("🔄 Calling sdk.submitOrder() - Custodial Mode...");
+      const _orderInfo = await sdk.submitOrder(
+        quote.srcChainId,
+        order as any,
+        quoteId,
+        secretHashes
+      );
+      console.log("✅ Order submitted successfully - Custodial Mode");
+    } else {
+      console.log("⏳ Order prepared for user submission - Non-custodial Mode");
+    }
 
     return {
       hash,
       secrets,
       secretHashes,
       quote,
-      status: "submitted",
+      order: useUserWallet ? order : undefined, // Only return order data in non-custodial mode
+      quoteId,
+      status: useUserWallet ? "prepared" : "submitted",
+      userWalletAddress,
+      orderWalletAddress,
+      mode: useUserWallet ? "non-custodial" : "custodial",
       // Return approval info for frontend
       approvalInfo: {
         tokenAddress: finalSrcToken,
@@ -581,18 +611,62 @@ export async function monitorOrderStatus(
   }
 }
 
+/**
+ * Submit a prepared order to the 1inch network
+ * Used in non-custodial mode after user has approved the transaction
+ */
+export async function submitPreparedOrder({
+  order,
+  quoteId,
+  srcChainId,
+  secretHashes,
+}: {
+  order: any;
+  quoteId: string;
+  srcChainId: number;
+  secretHashes: string[];
+}): Promise<{ success: boolean; status: string }> {
+  try {
+    console.log("🔄 Submitting prepared order to 1inch network...");
+    console.log("Order ID:", quoteId);
+    console.log("Source Chain:", srcChainId);
+
+    // Submit the order to 1inch Fusion network
+    const _orderInfo = await sdk.submitOrder(
+      srcChainId,
+      order,
+      quoteId,
+      secretHashes
+    );
+
+    console.log("✅ Prepared order submitted successfully");
+
+    return {
+      success: true,
+      status: "submitted",
+    };
+  } catch (error) {
+    console.error("❌ Error submitting prepared order:", error);
+    throw new Error(`Failed to submit prepared order: ${(error as Error).message}`);
+  }
+}
+
 export async function createCompleteFusionOrder({
   amount,
   srcChainId,
   dstChainId,
   srcTokenAddress,
   dstTokenAddress,
+  userWalletAddress,
+  useUserWallet = false,
 }: {
   amount: string;
   srcChainId: number;
   dstChainId: number;
   srcTokenAddress?: string;
   dstTokenAddress?: string;
+  userWalletAddress: string;
+  useUserWallet?: boolean;
 }) {
   try {
     // Create the order
@@ -602,18 +676,26 @@ export async function createCompleteFusionOrder({
       dstChainId,
       srcTokenAddress,
       dstTokenAddress,
+      userWalletAddress,
+      useUserWallet,
     });
 
-    // Monitor the order status until completion
-    const finalStatus = await monitorOrderStatus(
-      orderResult.hash,
-      orderResult.secrets
-    );
+    // Only monitor if order was immediately submitted (custodial mode)
+    if (!useUserWallet) {
+      // Monitor the order status until completion
+      const finalStatus = await monitorOrderStatus(
+        orderResult.hash,
+        orderResult.secrets
+      );
 
-    return {
-      ...orderResult,
-      finalStatus,
-    };
+      return {
+        ...orderResult,
+        finalStatus,
+      };
+    } else {
+      // In non-custodial mode, return the prepared order for frontend handling
+      return orderResult;
+    }
   } catch (error) {
     console.error("Error in complete fusion order:", error);
     throw error;

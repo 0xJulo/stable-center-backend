@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const dotenv_1 = __importDefault(require("dotenv"));
-const swap_1 = __importDefault(require("./apis/swap"));
+const secureSwap_1 = __importDefault(require("./apis/secureSwap"));
 const defi_1 = __importDefault(require("./apis/defi"));
 // Load environment variables
 dotenv_1.default.config({ path: ".env" });
@@ -22,7 +22,8 @@ app.use((req, res, next) => {
         ? [process.env.FRONTEND_URL || "https://your-frontend-domain.com"]
         : ["*"];
     const origin = req.headers.origin;
-    if (allowedOrigins.includes("*") || (origin && allowedOrigins.includes(origin))) {
+    if (allowedOrigins.includes("*") ||
+        (origin && allowedOrigins.includes(origin))) {
         res.header("Access-Control-Allow-Origin", origin || "*");
     }
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -49,20 +50,40 @@ app.get("/health", (req, res) => {
         status: "OK",
         timestamp: new Date().toISOString(),
         environment: NODE_ENV,
-        message: "Cross-chain swap API is running",
-        version: "1.0.0",
+        message: "Secure Cross-chain Swap API is running (1inch Compliant)",
+        version: "2.0.0",
+        architecture: "Non-custodial READ-ONLY",
+        security_compliance: "1inch Fusion standards",
+        frontend_sdk_required: true,
     });
 });
-// API routes
-app.use("/api/swap", swap_1.default);
+// API routes - Secure endpoints (1inch compliant)
+app.use("/api/v2/swap", secureSwap_1.default); // New secure API
 app.use("/api/defi", defi_1.default);
+// Legacy endpoints - return deprecation notice without importing unsafe code
+app.use("/api/swap", (req, res) => {
+    res.status(410).json({
+        success: false,
+        error: "DEPRECATED: Legacy swap endpoints removed for security compliance",
+        message: "Use /api/v2/swap endpoints with frontend 1inch SDK instead",
+        migration: {
+            "old": "/api/swap/* (INSECURE - used backend private keys)",
+            "new": "/api/v2/swap/* (SECURE - frontend SDK only)",
+            "compliance": "1inch non-custodial security standards"
+        },
+        available_endpoints: [
+            "GET /api/v2/swap/quote",
+            "GET /api/v2/swap/order-status/:hash",
+            "GET /api/v2/swap/supported-chains",
+            "GET /api/v2/swap/security-info"
+        ]
+    });
+});
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error("Error:", err);
     // Don't expose internal errors in production
-    const errorMessage = NODE_ENV === "production"
-        ? "Internal server error"
-        : err.message;
+    const errorMessage = NODE_ENV === "production" ? "Internal server error" : err.message;
     res.status(500).json({
         error: "Internal server error",
         message: errorMessage,
